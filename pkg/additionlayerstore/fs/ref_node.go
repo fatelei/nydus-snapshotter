@@ -3,6 +3,7 @@ package fs
 import (
 	"context"
 	"crypto"
+	_ "crypto/sha256"
 	"strings"
 	"syscall"
 
