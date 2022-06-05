@@ -36,21 +36,21 @@ func copyAttr(dest, src *fuse.Attr) {
 }
 
 // layerToAttr covert layer to fuse attribute.
-func layerToAttr(l layer.Layer, out *fuse.Attr) fusefs.StableAttr {
-	out.Size = uint64(l.Info().Size)
-	out.Blksize = blockSize
-	out.Blocks = out.Size / uint64(out.Blksize)
-	if out.Size%uint64(out.Blksize) > 0 {
-		out.Blocks++
-	}
-	out.Nlink = 1
-	out.Mode = layerFileMode
-	out.Owner = fuse.Owner{Uid: 0, Gid: 0}
-
-	return fusefs.StableAttr{
-		Mode: out.Mode,
-	}
-}
+//func layerToAttr(l layer.Layer, out *fuse.Attr) fusefs.StableAttr {
+//	out.Size = uint64(l.Info().Size)
+//	out.Blksize = blockSize
+//	out.Blocks = out.Size / uint64(out.Blksize)
+//	if out.Size%uint64(out.Blksize) > 0 {
+//		out.Blocks++
+//	}
+//	out.Nlink = 1
+//	out.Mode = layerFileMode
+//	out.Owner = fuse.Owner{Uid: 0, Gid: 0}
+//
+//	return fusefs.StableAttr{
+//		Mode: out.Mode,
+//	}
+//}
 
 // defaultFileAttr generate default file attribute.
 func defaultFileAttr(size uint64, out *fuse.Attr) fusefs.StableAttr {

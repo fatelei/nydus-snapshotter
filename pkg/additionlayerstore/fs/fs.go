@@ -166,6 +166,7 @@ func (m *idMap) add(p func(uint32) (releasable, error)) error {
 		if i == 0 {
 			continue
 		}
+		log.L.Infof("current ino = %d", i)
 		e, ok := m.m[i]
 		if !ok || e.releasable() {
 			r, err := p(i)

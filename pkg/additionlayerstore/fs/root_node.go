@@ -25,6 +25,7 @@ var _ = (fusefs.NodeLookuper)((*rootNode)(nil))
 // and returns refnode of the specified name
 func (n *rootNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fusefs.Inode, syscall.Errno) {
 	// lookup on memory nodes
+	log.L.WithContext(ctx).Infof("root node lookup name = %s", name)
 	if child := n.GetChild(name); child != nil {
 		switch tn := child.Operations().(type) {
 		case *fusefs.MemSymlink:
@@ -51,15 +52,15 @@ func (n *rootNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) 
 		return nil, syscall.EINVAL
 	}
 	sAttr := defaultDirAttr(&out.Attr)
-	cn := &refNode{
+	child := &refNode{
 		fs:  n.fs,
 		ref: refSpec,
 	}
-	copyAttr(&cn.attr, &out.Attr)
+	copyAttr(&child.attr, &out.Attr)
 	return n.fs.newInodeWithID(ctx, func(ino uint32) fusefs.InodeEmbedder {
 		out.Attr.Ino = uint64(ino)
-		cn.attr.Ino = uint64(ino)
+		child.attr.Ino = uint64(ino)
 		sAttr.Ino = uint64(ino)
-		return n.NewInode(ctx, cn, sAttr)
+		return n.NewInode(ctx, child, sAttr)
 	})
 }

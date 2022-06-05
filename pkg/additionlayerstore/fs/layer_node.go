@@ -36,6 +36,7 @@ func (n *layerNode) Create(ctx context.Context, name string, flags uint32, mode 
 
 // Lookup routes to the target file stored in the pool, based on the specified file name.
 func (n *layerNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fusefs.Inode, syscall.Errno) {
+	log.L.WithContext(ctx).Infof("layer node lookup name = %s", name)
 	switch name {
 	case layerUseFile:
 		log.G(ctx).Debugf("\"use\" file is referred but return ENOENT for reference management")

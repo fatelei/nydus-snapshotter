@@ -26,6 +26,7 @@ var _ = (fusefs.NodeRmdirer)((*refNode)(nil))
 // Lookup returns layernode of the specified name
 func (n *refNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fusefs.Inode, syscall.Errno) {
 	// lookup on memory nodes
+	log.L.WithContext(ctx).Infof("ref node lookup name = %s", name)
 	if child := n.GetChild(name); child != nil {
 		switch tn := child.Operations().(type) {
 		case *layerNode:
