@@ -2,6 +2,7 @@ package fs
 
 import (
 	"context"
+	"strings"
 	"syscall"
 
 	"github.com/containerd/containerd/log"
@@ -39,6 +40,9 @@ func (n *refNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (
 		return child, 0
 	}
 	targetDigest, err := digest.Parse(name)
+	index := strings.Index(name, ":")
+	algorithm := name[:index]
+	log.L.WithContext(ctx).Infof("digest algorithm name = %s", algorithm)
 	if err != nil {
 		log.G(ctx).WithError(err).Warnf("invalid digest for %q", name)
 		return nil, syscall.EINVAL
