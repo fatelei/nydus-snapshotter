@@ -163,7 +163,7 @@ func (m *idMap) add(p func(uint32) (releasable, error)) error {
 	}
 
 	for i := uint32(0); i <= ^uint32(0); i++ {
-		if i == 0 {
+		if i == 0 || i == 1 {
 			continue
 		}
 		log.L.Infof("current ino = %d", i)
