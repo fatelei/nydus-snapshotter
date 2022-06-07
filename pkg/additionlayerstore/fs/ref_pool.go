@@ -30,7 +30,7 @@ const (
 )
 
 func newRefPool(ctx context.Context, root string, hosts source.RegistryHosts) (*refPool, error) {
-	var poolroot = filepath.Join(root, "pool")
+	var poolroot = filepath.Join("/var/lib/nydus-store", "pool")
 	if err := os.MkdirAll(poolroot, 0700); err != nil {
 		return nil, err
 	}
