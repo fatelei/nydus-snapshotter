@@ -2,7 +2,6 @@ package fs
 
 import (
 	"context"
-	"io/ioutil"
 	"syscall"
 
 	"github.com/containerd/containerd/log"
@@ -55,16 +54,13 @@ func (n *layerNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut)
 		}
 		n.fs.knownNodeMu.Unlock()
 
-		reader, err := n.fs.resolver.Resolve(n.refNode.ref.String(), n.digest.String(), nil)
+		manifest, _, err := n.fs.refPool.loadRef(ctx, n.refNode.ref)
 		if err != nil {
+			panic(err)
 			return nil, syscall.EIO
 		}
-		defer reader.Close()
-		data, err := ioutil.ReadAll(reader)
-		if err != nil {
-			return nil, syscall.EIO
-		}
-		log.L.WithContext(ctx).Infof("data is %s", string(data))
+
+		log.L.WithContext(ctx).Infof("manifest is %+v", manifest)
 		return nil, syscall.ENOENT
 	case layerUseFile:
 		log.G(ctx).Debugf("\"use\" file is referred but return ENOENT for reference management")

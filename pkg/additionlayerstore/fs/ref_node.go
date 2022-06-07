@@ -2,9 +2,7 @@ package fs
 
 import (
 	"context"
-	"crypto"
 	_ "crypto/sha256"
-	"strings"
 	"syscall"
 
 	"github.com/containerd/containerd/log"
@@ -42,12 +40,6 @@ func (n *refNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (
 		return child, 0
 	}
 	targetDigest, err := digest.Parse(name)
-	index := strings.Index(name, ":")
-	algorithm := name[:index]
-	if algorithm == "sha256" {
-		log.L.WithContext(ctx).Infof("sha256 available = %v", crypto.SHA256.Available())
-	}
-	log.L.WithContext(ctx).Infof("digest algorithm name = %s", algorithm)
 	if err != nil {
 		log.G(ctx).WithError(err).Warnf("invalid digest for %q", name)
 		return nil, syscall.EINVAL

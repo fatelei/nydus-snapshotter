@@ -9,7 +9,8 @@ package fs
 import (
 	"context"
 	"fmt"
-	"github.com/containerd/nydus-snapshotter/pkg/filesystem/nydus"
+	"github.com/containerd/nydus-snapshotter/pkg/services/keychain/dockerconfig"
+	"github.com/containerd/nydus-snapshotter/pkg/services/resolver"
 	"os/exec"
 	"sync"
 	"syscall"
@@ -63,7 +64,7 @@ type fs struct {
 	knownNode   map[string]map[string]*layerReleasable
 	knownNodeMu sync.Mutex
 
-	resolver *nydus.Resolver
+	refPool *refPool
 }
 
 type layerReleasable struct {
@@ -95,11 +96,15 @@ func (r *inoReleasable) releasable() bool {
 
 func Mount(ctx context.Context, mountPoint string, debug bool) error {
 	seconds := time.Second
+	refPool, err := newRefPool(ctx, mountPoint, resolver.RegistryHostsFromConfig([]resolver.Credential{dockerconfig.NewDockerconfigKeychain(ctx)}...))
+	if err != nil {
+		return err
+	}
 	rawFS := fusefs.NewNodeFS(&rootNode{
 		fs: &fs{
 			nodeMap:  new(idMap),
 			layerMap: new(idMap),
-			resolver: nydus.NewResolver(),
+			refPool:  refPool,
 		},
 	}, &fusefs.Options{
 		AttrTimeout:     &seconds,
