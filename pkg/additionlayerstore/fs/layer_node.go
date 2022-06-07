@@ -2,6 +2,7 @@ package fs
 
 import (
 	"context"
+	"io/ioutil"
 	"syscall"
 
 	"github.com/containerd/containerd/log"
@@ -38,6 +39,33 @@ func (n *layerNode) Create(ctx context.Context, name string, flags uint32, mode 
 func (n *layerNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fusefs.Inode, syscall.Errno) {
 	log.L.WithContext(ctx).Infof("layer node lookup name = %s", name)
 	switch name {
+	case layerLink:
+		n.fs.knownNodeMu.Lock()
+		if lh, ok := n.fs.knownNode[n.refNode.ref.String()][n.digest.String()]; ok {
+			var ao fuse.AttrOut
+			if errno := lh.n.(fusefs.NodeGetattrer).Getattr(ctx, nil, &ao); errno != 0 {
+				return nil, errno
+			}
+			copyAttr(&out.Attr, &ao.Attr)
+			n.fs.knownNodeMu.Unlock()
+			return n.NewInode(ctx, lh.n, fusefs.StableAttr{
+				Mode: out.Attr.Mode,
+				Ino:  out.Attr.Ino,
+			}), 0
+		}
+		n.fs.knownNodeMu.Unlock()
+
+		reader, err := n.fs.resolver.Resolve(n.refNode.ref.String(), n.digest.String(), nil)
+		if err != nil {
+			return nil, syscall.EIO
+		}
+		defer reader.Close()
+		data, err := ioutil.ReadAll(reader)
+		if err != nil {
+			return nil, syscall.EIO
+		}
+		log.L.WithContext(ctx).Infof("data is %s", string(data))
+		return nil, syscall.ENOENT
 	case layerUseFile:
 		log.G(ctx).Debugf("\"use\" file is referred but return ENOENT for reference management")
 		return nil, syscall.ENOENT

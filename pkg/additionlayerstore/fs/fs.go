@@ -9,6 +9,7 @@ package fs
 import (
 	"context"
 	"fmt"
+	"github.com/containerd/nydus-snapshotter/pkg/filesystem/nydus"
 	"os/exec"
 	"sync"
 	"syscall"
@@ -36,7 +37,6 @@ const (
 	fusermountBin = "fusermount"
 )
 
-
 // idMap manages uint32 IDs with automatic GC for releasable objects.
 type idMap struct {
 	m        map[uint32]releasable
@@ -48,7 +48,6 @@ type idMap struct {
 type releasable interface {
 	releasable() bool
 }
-
 
 type fs struct {
 	// nodeMap manages inode numbers for nodes other than nodes in layers
@@ -63,6 +62,8 @@ type fs struct {
 
 	knownNode   map[string]map[string]*layerReleasable
 	knownNodeMu sync.Mutex
+
+	resolver *nydus.Resolver
 }
 
 type layerReleasable struct {
@@ -96,8 +97,9 @@ func Mount(ctx context.Context, mountPoint string, debug bool) error {
 	seconds := time.Second
 	rawFS := fusefs.NewNodeFS(&rootNode{
 		fs: &fs{
-			nodeMap:      new(idMap),
-			layerMap:     new(idMap),
+			nodeMap:  new(idMap),
+			layerMap: new(idMap),
+			resolver: nydus.NewResolver(),
 		},
 	}, &fusefs.Options{
 		AttrTimeout:     &seconds,
