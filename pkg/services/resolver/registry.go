@@ -17,11 +17,11 @@
 package resolver
 
 import (
+	"github.com/containerd/nydus-snapshotter/pkg/additionlayerstore/source"
 	"time"
 
 	"github.com/containerd/containerd/reference"
 	"github.com/containerd/containerd/remotes/docker"
-	"github.com/containerd/nydus-snapshotter/pkg/additionlayerstore/fs"
 	rhttp "github.com/hashicorp/go-retryablehttp"
 )
 
@@ -53,7 +53,7 @@ type MirrorConfig struct {
 type Credential func(string, reference.Spec) (string, string, error)
 
 // RegistryHostsFromConfig creates RegistryHosts (a set of registry configuration) from Config.
-func RegistryHostsFromConfig(credsFuncs ...Credential) fs.RegistryHosts {
+func RegistryHostsFromConfig(credsFuncs ...Credential) source.RegistryHosts {
 	return func(ref reference.Spec) (hosts []docker.RegistryHost, _ error) {
 		host := ref.Hostname()
 		for _, h := range []MirrorConfig{

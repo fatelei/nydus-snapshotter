@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/containerd/nydus-snapshotter/pkg/additionlayerstore/source"
 	"github.com/containerd/nydus-snapshotter/pkg/cache"
 	"io"
 	"os"
@@ -28,7 +29,7 @@ const (
 	defaultManifestCacheTime = 120 * time.Second
 )
 
-func newRefPool(ctx context.Context, root string, hosts RegistryHosts) (*refPool, error) {
+func newRefPool(ctx context.Context, root string, hosts source.RegistryHosts) (*refPool, error) {
 	var poolroot = filepath.Join(root, "pool")
 	if err := os.MkdirAll(poolroot, 0700); err != nil {
 		return nil, err
@@ -56,7 +57,7 @@ func colon2dash(s string) string {
 
 type refPool struct {
 	path  string
-	hosts RegistryHosts
+	hosts source.RegistryHosts
 
 	refcounter map[string]*releaser
 	cache      *cache.LRUCache
