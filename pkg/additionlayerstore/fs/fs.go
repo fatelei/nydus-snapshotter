@@ -175,7 +175,7 @@ func Mount(ctx context.Context, mountPoint string, rootDir string, debug bool, c
 		log.L.WithError(err).Debugf("%s not installed; trying direct mount", fusermountBin)
 		mountOpts.DirectMount = true
 	}
-	server, err := fuse.NewServer(rawFS, fmt.Sprintf(mountPoint, "store"), mountOpts)
+	server, err := fuse.NewServer(rawFS, mountPoint, mountOpts)
 	if err != nil {
 		return err
 	}
