@@ -39,8 +39,17 @@ func FromDockerConfig(host string) *PassKeyChain {
 	}
 
 	// Do not return empty auth. It makes caller life easier.
-	if len(authConfig.Username) == 0 || len(authConfig.Password) == 0 {
+	if len(authConfig.Username) == 0 || len(authConfig.Password) == 0 || len(authConfig.Auth) == 0 {
 		return nil
+	}
+
+	if len(authConfig.Auth) > 0 {
+		passKeyChain, err := FromBase64(authConfig.Auth)
+		if err != nil {
+			logrus.WithError(err).Errorf("decode username & password failed from base64")
+			return nil
+		}
+		return &passKeyChain
 	}
 
 	return &PassKeyChain{
