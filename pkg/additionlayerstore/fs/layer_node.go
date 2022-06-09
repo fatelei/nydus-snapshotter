@@ -86,16 +86,17 @@ func (n *layerNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut)
 		for _, layer := range manifest.Layers {
 			if layer.Digest == n.digest {
 				_, metaOK := layer.Annotations[label.NydusMetaLayer]
-				_, dataOK := layer.Annotations[label.NydusDataLayer]
-				if metaOK || dataOK {
+				if metaOK {
 					if metaOK {
+						layer.Annotations[label.ImageRef] = n.refNode.ref.String()
+						layer.Annotations[label.CRIDigest] = n.digest.String()
+
 						err = n.fs.nydusFs.PrepareMetaLayer(ctx, storage.Snapshot{ID: n.digest.String()}, layer.Annotations)
 						if err != nil {
 							panic(err)
 							return nil, syscall.EIO
 						}
 
-						layer.Annotations[label.ImageRef] = n.refNode.ref.String()
 						err = n.fs.nydusFs.Mount(ctx, n.digest.String(), layer.Annotations)
 						if err != nil {
 							panic(err)
@@ -111,8 +112,6 @@ func (n *layerNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut)
 			panic(err)
 			return nil, syscall.EIO
 		}
-
-		log.L.WithContext(ctx).Infof("manifest is %+v", manifest)
 		return nil, syscall.ENOENT
 	case layerUseFile:
 		log.G(ctx).Debugf("\"use\" file is referred but return ENOENT for reference management")
