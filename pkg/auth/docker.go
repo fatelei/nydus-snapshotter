@@ -38,11 +38,6 @@ func FromDockerConfig(host string) *PassKeyChain {
 		return nil
 	}
 
-	// Do not return empty auth. It makes caller life easier.
-	if len(authConfig.Username) == 0 || len(authConfig.Password) == 0 || len(authConfig.Auth) == 0 {
-		return nil
-	}
-
 	if len(authConfig.Auth) > 0 {
 		passKeyChain, err := FromBase64(authConfig.Auth)
 		if err != nil {
@@ -50,6 +45,11 @@ func FromDockerConfig(host string) *PassKeyChain {
 			return nil
 		}
 		return &passKeyChain
+	}
+
+	// Do not return empty auth. It makes caller life easier.
+	if len(authConfig.Username) == 0 || len(authConfig.Password) == 0 {
+		return nil
 	}
 
 	return &PassKeyChain{
