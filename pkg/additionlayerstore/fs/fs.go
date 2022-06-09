@@ -104,9 +104,9 @@ func (r *inoReleasable) releasable() bool {
 	return r.n.EmbeddedInode().Forgotten()
 }
 
-func Mount(ctx context.Context, mountPoint string, debug bool, cfg *config.Config) error {
+func Mount(ctx context.Context, mountPoint string, rootDir string, debug bool, cfg *config.Config) error {
 	seconds := time.Second
-	refPool, err := newRefPool(ctx, mountPoint, resolver.RegistryHostsFromConfig([]resolver.Credential{dockerconfig.NewDockerconfigKeychain(ctx)}...))
+	refPool, err := newRefPool(ctx, rootDir, resolver.RegistryHostsFromConfig([]resolver.Credential{dockerconfig.NewDockerconfigKeychain(ctx)}...))
 	if err != nil {
 		return err
 	}
@@ -116,7 +116,7 @@ func Mount(ctx context.Context, mountPoint string, debug bool, cfg *config.Confi
 		return err
 	}
 
-	db, err := store.NewDatabase(mountPoint)
+	db, err := store.NewDatabase(rootDir)
 	if err != nil {
 		return errors.Wrap(err, "failed to new database")
 	}
@@ -134,7 +134,7 @@ func Mount(ctx context.Context, mountPoint string, debug bool, cfg *config.Confi
 	opts := []nydus.NewFSOpt{
 		nydus.WithProcessManager(pm),
 		nydus.WithNydusdBinaryPath(cfg.NydusdBinaryPath, cfg.DaemonMode),
-		nydus.WithMeta(cfg.RootDir),
+		nydus.WithMeta(rootDir),
 		nydus.WithDaemonConfig(cfg.DaemonCfg),
 		nydus.WithVPCRegistry(cfg.ConvertVpcRegistry),
 		nydus.WithVerifier(verifier),
@@ -175,7 +175,7 @@ func Mount(ctx context.Context, mountPoint string, debug bool, cfg *config.Confi
 		log.L.WithError(err).Debugf("%s not installed; trying direct mount", fusermountBin)
 		mountOpts.DirectMount = true
 	}
-	server, err := fuse.NewServer(rawFS, mountPoint, mountOpts)
+	server, err := fuse.NewServer(rawFS, fmt.Sprintf(mountPoint, "store"), mountOpts)
 	if err != nil {
 		return err
 	}

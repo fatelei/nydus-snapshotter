@@ -24,7 +24,7 @@ func waitForSIGINT() {
 func main() {
 	flags := command.NewFlags()
 	app := &cli.App{
-		Name:    "containerd-nydus-grpc",
+		Name:    "nydus store",
 		Usage:   "nydus containerd proxy snapshotter plugin",
 		Version: "0.0.0",
 		Flags:   flags.F,
@@ -39,7 +39,8 @@ func main() {
 			}
 
 			mountPoint := "/var/lib/nydus-store/store"
-			if err := fs.Mount(c.Context, mountPoint, true, &cfg); err != nil {
+			rootDir := "/var/lib/nydus-store"
+			if err := fs.Mount(c.Context, mountPoint, rootDir,true, &cfg); err != nil {
 				log.G(c.Context).WithError(err).Fatalf("failed to mount fs at %q", mountPoint)
 			}
 			defer func() {
