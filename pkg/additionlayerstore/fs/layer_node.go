@@ -1,7 +1,11 @@
 package fs
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"github.com/containerd/containerd/snapshots/storage"
+	"github.com/containerd/nydus-snapshotter/pkg/label"
 	"syscall"
 
 	"github.com/containerd/containerd/log"
@@ -38,6 +42,27 @@ func (n *layerNode) Create(ctx context.Context, name string, flags uint32, mode 
 func (n *layerNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fusefs.Inode, syscall.Errno) {
 	log.L.WithContext(ctx).Infof("layer node lookup name = %s", name)
 	switch name {
+	case layerInfoLink:
+		info, err := n.fs.getLayerInfo(ctx, n.refNode.ref, n.digest)
+		if err != nil {
+			log.G(ctx).WithError(err).Warnf("failed to get layer info for %q: %q", name, n.digest)
+			return nil, syscall.EIO
+		}
+		buf := new(bytes.Buffer)
+		if err := json.NewEncoder(buf).Encode(&info); err != nil {
+			log.G(ctx).WithError(err).Warnf("failed to encode layer info for %q: %q", name, n.digest)
+			return nil, syscall.EIO
+		}
+		infoData := buf.Bytes()
+		sAttr := defaultFileAttr(uint64(len(infoData)), &out.Attr)
+		cn := &fusefs.MemRegularFile{Data: infoData}
+		copyAttr(&cn.Attr, &out.Attr)
+		return n.fs.newInodeWithID(ctx, func(ino uint32) fusefs.InodeEmbedder {
+			out.Attr.Ino = uint64(ino)
+			cn.Attr.Ino = uint64(ino)
+			sAttr.Ino = uint64(ino)
+			return n.NewInode(ctx, cn, sAttr)
+		})
 	case layerLink:
 		n.fs.knownNodeMu.Lock()
 		if lh, ok := n.fs.knownNode[n.refNode.ref.String()][n.digest.String()]; ok {
@@ -55,6 +80,33 @@ func (n *layerNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut)
 		n.fs.knownNodeMu.Unlock()
 
 		manifest, _, err := n.fs.refPool.loadRef(ctx, n.refNode.ref)
+		if err != nil {
+			return nil, syscall.EIO
+		}
+		for _, layer := range manifest.Layers {
+			if layer.Digest == n.digest {
+				_, metaOK := layer.Annotations[label.NydusMetaLayer]
+				_, dataOK := layer.Annotations[label.NydusDataLayer]
+				if metaOK || dataOK {
+					if metaOK {
+						err = n.fs.nydusFs.PrepareMetaLayer(ctx, storage.Snapshot{ID: n.digest.String()}, layer.Annotations)
+						if err != nil {
+							panic(err)
+							return nil, syscall.EIO
+						}
+
+						layer.Annotations[label.ImageRef] = n.refNode.ref.String()
+						err = n.fs.nydusFs.Mount(ctx, n.digest.String(), layer.Annotations)
+						if err != nil {
+							panic(err)
+							return nil, syscall.EIO
+						}
+
+						return nil, syscall.EIO
+					}
+				}
+			}
+		}
 		if err != nil {
 			panic(err)
 			return nil, syscall.EIO

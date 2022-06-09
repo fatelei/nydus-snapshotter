@@ -40,6 +40,19 @@ func (n *rootNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) 
 		return child, 0
 	}
 
+	switch name {
+	case poolLink:
+		sAttr := defaultLinkAttr(&out.Attr)
+		cn := &fusefs.MemSymlink{Data: []byte(n.fs.refPool.root())}
+		copyAttr(&cn.Attr, &out.Attr)
+		return n.fs.newInodeWithID(ctx, func(ino uint32) fusefs.InodeEmbedder {
+			out.Attr.Ino = uint64(ino)
+			cn.Attr.Ino = uint64(ino)
+			sAttr.Ino = uint64(ino)
+			return n.NewInode(ctx, cn, sAttr)
+		})
+	}
+
 	refBytes, err := base64.StdEncoding.DecodeString(name)
 	if err != nil {
 		log.G(ctx).WithError(err).Debugf("failed to decode ref base64 %q", name)
