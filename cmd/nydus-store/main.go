@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/containerd/nydus-snapshotter/config"
 	"os"
 	"os/signal"
 	"syscall"
@@ -13,7 +14,8 @@ import (
 func main() {
 	ctx := context.Background()
 	mountPoint := "/var/lib/nydus-store/store"
-	if err := fs.Mount(ctx, mountPoint, true); err != nil {
+	var cfg config.Config
+	if err := fs.Mount(ctx, mountPoint, true, &cfg); err != nil {
 		log.G(ctx).WithError(err).Fatalf("failed to mount fs at %q", mountPoint)
 	}
 	defer func() {
