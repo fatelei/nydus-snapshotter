@@ -10,7 +10,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/containerd/stargz-snapshotter/estargz"
 	fusefs "github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"github.com/opencontainers/go-digest"
@@ -228,7 +227,7 @@ func (n *node) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fu
 	isRoot := n.isRootNode()
 
 	// We don't want to show prefetch landmarks in "/".
-	if isRoot && (name == estargz.PrefetchLandmark || name == estargz.NoPrefetchLandmark) {
+	if isRoot {
 		return nil, syscall.ENOENT
 	}
 
