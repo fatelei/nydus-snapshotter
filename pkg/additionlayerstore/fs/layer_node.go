@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"github.com/containerd/nydus-snapshotter/pkg/additionlayerstore/layer"
 	"syscall"
 
 	"github.com/containerd/containerd/log"
@@ -20,15 +22,6 @@ type layerNode struct {
 
 	refNode *refNode
 	digest  digest.Digest
-}
-
-type node struct {
-	fusefs.Inode
-	attr fuse.Attr
-	fs         *fs
-	id         uint32
-	ents       []fuse.DirEntry
-	entsCached bool
 }
 
 var _ = (fusefs.InodeEmbedder)((*layerNode)(nil))
@@ -94,8 +87,18 @@ func (n *layerNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut)
 		var cn *fusefs.Inode
 		var errno syscall.Errno
 		err = n.fs.layerMap.add(func(id uint32) (releasable, error) {
-			root := &node{}
-			copyAttr(&root.attr, &out.Attr)
+			root, err := layer.NewNode(n.digest, id, layer.OverlayOpaqueAll)
+			if err != nil {
+				return nil, err
+			}
+
+			var ao fuse.AttrOut
+			errno = root.(fusefs.NodeGetattrer).Getattr(ctx, nil, &ao)
+			if errno != 0 {
+				return nil, fmt.Errorf("failed to get root node: %v", errno)
+			}
+
+			copyAttr(&out.Attr, &ao.Attr)
 			cn = n.NewInode(ctx, root, fusefs.StableAttr{
 				Mode: out.Attr.Mode,
 				Ino:  out.Attr.Ino,
