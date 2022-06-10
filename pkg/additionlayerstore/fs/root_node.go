@@ -43,7 +43,7 @@ func (n *rootNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) 
 	switch name {
 	case poolLink:
 		sAttr := defaultLinkAttr(&out.Attr)
-		cn := &fusefs.MemSymlink{Data: []byte(n.fs.refPool.root())}
+		cn := &fusefs.MemSymlink{Data: []byte(n.fs.layManager.RefRoot())}
 		copyAttr(&cn.Attr, &out.Attr)
 		return n.fs.newInodeWithID(ctx, func(ino uint32) fusefs.InodeEmbedder {
 			out.Attr.Ino = uint64(ino)
