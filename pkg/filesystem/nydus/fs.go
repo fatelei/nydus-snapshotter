@@ -64,7 +64,7 @@ func init() {
 	}
 }
 
-type filesystem struct {
+type NydusFilesystem struct {
 	meta.FileSystemMeta
 	manager          *process.Manager
 	cacheMgr         *cache.Manager
@@ -84,7 +84,7 @@ type filesystem struct {
 
 // NewFileSystem initialize Filesystem instance
 func NewFileSystem(ctx context.Context, opt ...NewFSOpt) (fspkg.FileSystem, error) {
-	var fs filesystem
+	var fs NydusFilesystem
 	for _, o := range opt {
 		err := o(&fs)
 		if err != nil {
@@ -100,7 +100,7 @@ func NewFileSystem(ctx context.Context, opt ...NewFSOpt) (fspkg.FileSystem, erro
 	return &fs, nil
 }
 
-func (fs *filesystem) newSharedDaemon() (*daemon.Daemon, error) {
+func (fs *NydusFilesystem) newSharedDaemon() (*daemon.Daemon, error) {
 	modeOpt := daemon.WithSharedDaemon()
 	if fs.mode == fspkg.PrefetchInstance {
 		modeOpt = daemon.WithPrefetchDaemon()
@@ -128,7 +128,7 @@ func (fs *filesystem) newSharedDaemon() (*daemon.Daemon, error) {
 	return d, nil
 }
 
-func (fs *filesystem) Support(ctx context.Context, labels map[string]string) bool {
+func (fs *NydusFilesystem) Support(ctx context.Context, labels map[string]string) bool {
 	_, dataOk := labels[label.NydusDataLayer]
 	return dataOk
 }
@@ -201,7 +201,7 @@ func writeBootstrapToFile(reader io.Reader, bootstrap *os.File, LegacyBootstrap 
 	return err
 }
 
-func (fs *filesystem) PrepareMetaLayer(ctx context.Context, s storage.Snapshot, labels map[string]string) error {
+func (fs *NydusFilesystem) PrepareMetaLayer(ctx context.Context, s storage.Snapshot, labels map[string]string) error {
 	start := time.Now()
 	defer func() {
 		duration := time.Since(start)
@@ -265,13 +265,14 @@ func (fs *filesystem) PrepareMetaLayer(ctx context.Context, s storage.Snapshot, 
 
 // Mount will be called when containerd snapshotter prepare remote snapshotter
 // this method will fork nydus daemon and manage it in the internal store, and indexed by snapshotID
-func (fs *filesystem) Mount(ctx context.Context, snapshotID string, labels map[string]string) (err error) {
+func (fs *NydusFilesystem) Mount(ctx context.Context, snapshotID string, labels map[string]string) (err error) {
 	// If NoneDaemon mode, we don't mount nydus on host
 	if fs.mode == fspkg.NoneInstance {
 		return nil
 	}
 
 	imageID, ok := labels[label.ImageRef]
+
 	if !ok {
 		return fmt.Errorf("failed to find image ref of snapshot %s, labels %v", snapshotID, labels)
 	}
@@ -305,9 +306,47 @@ func (fs *filesystem) Mount(ctx context.Context, snapshotID string, labels map[s
 	return nil
 }
 
+// Mount will be called when containerd snapshotter prepare remote snapshotter
+// this method will fork nydus daemon and manage it in the internal store, and indexed by snapshotID
+func (fs *NydusFilesystem) MountDiff(ctx context.Context, layerRef string, digest string, labels map[string]string) (err error) {
+	// If NoneDaemon mode, we don't mount nydus on host
+	if fs.mode == fspkg.NoneInstance {
+		return nil
+	}
+
+	d, err := fs.newDaemonForStore(ctx, layerRef, digest)
+	// if daemon already exists for snapshotID, just return
+	if err != nil {
+		if errdefs.IsAlreadyExists(err) {
+			return nil
+		}
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = fs.manager.DestroyDaemon(d)
+		}
+	}()
+	// if publicKey is not empty we should verify bootstrap file of image
+	bootstrap, err := d.BootstrapFile()
+	if err != nil {
+		return errors.Wrap(err, fmt.Sprintf("failed to find bootstrap file of daemon %s", d.ID))
+	}
+	err = fs.verifier.Verify(labels, bootstrap)
+	if err != nil {
+		return errors.Wrap(err, fmt.Sprintf("failed to verify signature of daemon %s", d.ID))
+	}
+	err = fs.mount(d, labels)
+	if err != nil {
+		log.G(ctx).Errorf("failed to mount %s, %v", d.MountPoint(), err)
+		return errors.Wrap(err, fmt.Sprintf("failed to mount daemon %s", d.ID))
+	}
+	return nil
+}
+
 // WaitUntilReady wait until daemon ready by snapshotID, it will wait until nydus domain socket established
 // and the status of nydusd daemon must be ready
-func (fs *filesystem) WaitUntilReady(ctx context.Context, snapshotID string) error {
+func (fs *NydusFilesystem) WaitUntilReady(ctx context.Context, snapshotID string) error {
 	// If NoneDaemon mode, there's no need to wait for daemon ready
 	if !fs.hasDaemon() {
 		return nil
@@ -321,7 +360,7 @@ func (fs *filesystem) WaitUntilReady(ctx context.Context, snapshotID string) err
 	return d.WaitUntilReady()
 }
 
-func (fs *filesystem) Umount(ctx context.Context, mountPoint string) error {
+func (fs *NydusFilesystem) Umount(ctx context.Context, mountPoint string) error {
 	if fs.mode == fspkg.NoneInstance {
 		return nil
 	}
@@ -345,7 +384,7 @@ func (fs *filesystem) Umount(ctx context.Context, mountPoint string) error {
 	return nil
 }
 
-func (fs *filesystem) Cleanup(ctx context.Context) error {
+func (fs *NydusFilesystem) Cleanup(ctx context.Context) error {
 	if !fs.hasDaemon() {
 		return nil
 	}
@@ -359,7 +398,7 @@ func (fs *filesystem) Cleanup(ctx context.Context) error {
 	return nil
 }
 
-func (fs *filesystem) MountPoint(snapshotID string) (string, error) {
+func (fs *NydusFilesystem) MountPoint(snapshotID string) (string, error) {
 	if !fs.hasDaemon() {
 		// For NoneDaemon mode, just return error to use snapshotter
 		// default mount point path
@@ -375,11 +414,11 @@ func (fs *filesystem) MountPoint(snapshotID string) (string, error) {
 	return "", fmt.Errorf("failed to find nydus mountpoint of snapshot %s", snapshotID)
 }
 
-func (fs *filesystem) BootstrapFile(id string) (string, error) {
+func (fs *NydusFilesystem) BootstrapFile(id string) (string, error) {
 	return daemon.GetBootstrapFile(fs.SnapshotRoot(), id)
 }
 
-func (fs *filesystem) NewDaemonConfig(labels map[string]string) (config.DaemonConfig, error) {
+func (fs *NydusFilesystem) NewDaemonConfig(labels map[string]string) (config.DaemonConfig, error) {
 	imageID, ok := labels[label.ImageRef]
 	if !ok {
 		return config.DaemonConfig{}, fmt.Errorf("no image ID found in label")
@@ -398,7 +437,7 @@ func (fs *filesystem) NewDaemonConfig(labels map[string]string) (config.DaemonCo
 	return cfg, nil
 }
 
-func (fs *filesystem) mount(d *daemon.Daemon, labels map[string]string) error {
+func (fs *NydusFilesystem) mount(d *daemon.Daemon, labels map[string]string) error {
 	err := fs.generateDaemonConfig(d, labels)
 	if err != nil {
 		return err
@@ -416,7 +455,7 @@ func (fs *filesystem) mount(d *daemon.Daemon, labels map[string]string) error {
 	return fs.addSnapshot(d.ImageID, labels)
 }
 
-func (fs *filesystem) addSnapshot(imageID string, labels map[string]string) error {
+func (fs *NydusFilesystem) addSnapshot(imageID string, labels map[string]string) error {
 	// Do nothing if there's no cacheMgr
 	if fs.cacheMgr == nil {
 		return nil
@@ -430,7 +469,7 @@ func (fs *filesystem) addSnapshot(imageID string, labels map[string]string) erro
 	return fs.cacheMgr.AddSnapshot(imageID, blobs)
 }
 
-func (fs *filesystem) initSharedDaemon(ctx context.Context) (_ *daemon.Daemon, retErr error) {
+func (fs *NydusFilesystem) initSharedDaemon(ctx context.Context) (_ *daemon.Daemon, retErr error) {
 	d, err := fs.newSharedDaemon()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to init shared daemon")
@@ -449,7 +488,7 @@ func (fs *filesystem) initSharedDaemon(ctx context.Context) (_ *daemon.Daemon, r
 	return d, nil
 }
 
-func (fs *filesystem) newDaemon(ctx context.Context, snapshotID string, imageID string) (_ *daemon.Daemon, retErr error) {
+func (fs *NydusFilesystem) newDaemon(ctx context.Context, snapshotID string, imageID string) (_ *daemon.Daemon, retErr error) {
 	if fs.mode == fspkg.SharedInstance || fs.mode == fspkg.PrefetchInstance {
 		// Check if daemon is already running
 		d, err := fs.getSharedDaemon()
@@ -481,8 +520,12 @@ func (fs *filesystem) newDaemon(ctx context.Context, snapshotID string, imageID 
 	return fs.createNewDaemon(snapshotID, imageID)
 }
 
+func (fs *NydusFilesystem) newDaemonForStore(ctx context.Context, layerRef string, digest string) (_ *daemon.Daemon, retErr error) {
+	return fs.createNewDaemonForStore(layerRef, digest)
+}
+
 // Find saved sharedDaemon first, if not found then find it in db
-func (fs *filesystem) getSharedDaemon() (*daemon.Daemon, error) {
+func (fs *NydusFilesystem) getSharedDaemon() (*daemon.Daemon, error) {
 	if fs.sharedDaemon != nil {
 		return fs.sharedDaemon, nil
 	}
@@ -492,7 +535,7 @@ func (fs *filesystem) getSharedDaemon() (*daemon.Daemon, error) {
 }
 
 // createNewDaemon create new nydus daemon by snapshotID and imageID
-func (fs *filesystem) createNewDaemon(snapshotID string, imageID string) (*daemon.Daemon, error) {
+func (fs *NydusFilesystem) createNewDaemon(snapshotID string, imageID string) (*daemon.Daemon, error) {
 	var (
 		d   *daemon.Daemon
 		err error
@@ -523,10 +566,43 @@ func (fs *filesystem) createNewDaemon(snapshotID string, imageID string) (*daemo
 	return d, nil
 }
 
+// createNewDaemon create new nydus daemon by snapshotID and imageID
+func (fs *NydusFilesystem) createNewDaemonForStore(layerRef string, digest string) (*daemon.Daemon, error) {
+	var (
+		d   *daemon.Daemon
+		err error
+	)
+	d, _ = fs.manager.GetBySnapshotID(layerRef)
+	if d != nil {
+		return nil, errdefs.ErrAlreadyExists
+	}
+	customMountPoint := filepath.Join(fs.RootDir, layerRef, digest, "diff")
+	if d, err = daemon.NewDaemon(
+		daemon.WithSnapshotID(layerRef),
+		daemon.WithSocketDir(fs.SocketRoot()),
+		daemon.WithConfigDir(fs.ConfigRoot()),
+		daemon.WithSnapshotDir(fs.SnapshotRoot()),
+		daemon.WithLogDir(fs.logDir),
+		daemon.WithImageID(digest),
+		daemon.WithLogLevel(fs.logLevel),
+		daemon.WithLogToStdout(fs.logToStdout),
+		daemon.WithCustomMountPoint(customMountPoint),
+		daemon.WithNydusdThreadNum(fs.nydusdThreadNum),
+		daemon.WithDaemonBackend(fs.daemonBackend),
+	); err != nil {
+		return nil, err
+	}
+	if err = fs.manager.NewDaemon(d); err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
+
 // createSharedDaemon create an virtual daemon from global shared daemon instance
 // the global shared daemon with an special ID "shared_daemon", all virtual daemons are
 // created from this daemon with api invocation
-func (fs *filesystem) createSharedDaemon(snapshotID string, imageID string) (*daemon.Daemon, error) {
+func (fs *NydusFilesystem) createSharedDaemon(snapshotID string, imageID string) (*daemon.Daemon, error) {
 	var (
 		sharedDaemon *daemon.Daemon
 		d            *daemon.Daemon
@@ -562,7 +638,7 @@ func (fs *filesystem) createSharedDaemon(snapshotID string, imageID string) (*da
 }
 
 // generateDaemonConfig generate Daemon configuration
-func (fs *filesystem) generateDaemonConfig(d *daemon.Daemon, labels map[string]string) error {
+func (fs *NydusFilesystem) generateDaemonConfig(d *daemon.Daemon, labels map[string]string) error {
 	cfg, err := config.NewDaemonConfig(d.DaemonBackend, fs.daemonCfg, d.ImageID, fs.vpcRegistry, labels)
 	if err != nil {
 		return errors.Wrapf(err, "failed to generate daemon config for daemon %s", d.ID)
@@ -587,11 +663,11 @@ func (fs *filesystem) generateDaemonConfig(d *daemon.Daemon, labels map[string]s
 	return config.SaveConfig(cfg, d.ConfigFile())
 }
 
-func (fs *filesystem) hasDaemon() bool {
+func (fs *NydusFilesystem) hasDaemon() bool {
 	return fs.mode != fspkg.NoneInstance && fs.mode != fspkg.PrefetchInstance
 }
 
-func (fs *filesystem) getBlobIDs(labels map[string]string) ([]string, error) {
+func (fs *NydusFilesystem) getBlobIDs(labels map[string]string) ([]string, error) {
 	idStr, ok := labels[LayerAnnotationNydusBlobIDs]
 	if !ok {
 		return nil, errors.New("no blob ids found")

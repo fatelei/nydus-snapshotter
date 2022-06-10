@@ -1,6 +1,9 @@
 package main
 
 import (
+	"github.com/containerd/nydus-snapshotter/pkg/additionlayerstore/manager"
+	"github.com/containerd/nydus-snapshotter/pkg/services/keychain/dockerconfig"
+	"github.com/containerd/nydus-snapshotter/pkg/services/resolver"
 	"os"
 	"os/signal"
 	"syscall"
@@ -40,7 +43,14 @@ func main() {
 
 			mountPoint := "/var/lib/nydus-store/store"
 			rootDir := "/var/lib/nydus-store"
-			if err := fs.Mount(c.Context, mountPoint, rootDir,true, &cfg); err != nil {
+
+			hosts := resolver.RegistryHostsFromConfig([]resolver.Credential{dockerconfig.NewDockerconfigKeychain(c.Context)}...)
+			layManager, err := manager.NewLayerManager(c.Context, rootDir, hosts, &cfg)
+			if err != nil {
+				panic(err)
+			}
+
+			if err := fs.Mount(c.Context, mountPoint, rootDir,true, layManager); err != nil {
 				log.G(c.Context).WithError(err).Fatalf("failed to mount fs at %q", mountPoint)
 			}
 			defer func() {

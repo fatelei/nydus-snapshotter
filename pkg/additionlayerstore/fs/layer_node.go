@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/containerd/containerd/snapshots/storage"
-	"github.com/containerd/nydus-snapshotter/pkg/label"
 	"syscall"
 
 	"github.com/containerd/containerd/log"
@@ -24,6 +22,15 @@ type layerNode struct {
 	digest  digest.Digest
 }
 
+type node struct {
+	fusefs.Inode
+	attr fuse.Attr
+	fs         *fs
+	id         uint32
+	ents       []fuse.DirEntry
+	entsCached bool
+}
+
 var _ = (fusefs.InodeEmbedder)((*layerNode)(nil))
 var _ = (fusefs.NodeCreater)((*layerNode)(nil))
 var _ = (fusefs.NodeLookuper)((*layerNode)(nil))
@@ -31,10 +38,10 @@ var _ = (fusefs.NodeLookuper)((*layerNode)(nil))
 // Create marks this layer as "using".
 // We don't use refnode.Mkdir because Mkdir event doesn't reach here if layernode already exists.
 func (n *layerNode) Create(ctx context.Context, name string, flags uint32, mode uint32, out *fuse.EntryOut) (node *fusefs.Inode, fh fusefs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
-	//if name == layerUseFile {
-	//	current := n.fs.layerManager.use(n.refNode.ref, n.digest)
-	//	log.G(ctx).WithField("refcounter", current).Infof("layer %v / %v is marked as USING", n.refnode.ref, n.digest)
-	//}
+	if name == layerUseFile {
+		current := n.fs.layManager.Use(n.refNode.ref, n.digest)
+		log.G(ctx).WithField("refcounter", current).Infof("layer %v / %v is marked as USING", n.refNode.ref, n.digest)
+	}
 	return nil, nil, 0, syscall.ENOENT
 }
 
@@ -43,7 +50,7 @@ func (n *layerNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut)
 	log.L.WithContext(ctx).Infof("layer node lookup name = %s", name)
 	switch name {
 	case layerInfoLink:
-		info, err := n.fs.getLayerInfo(ctx, n.refNode.ref, n.digest)
+		info, err := n.fs.layManager.GetLayerInfo(ctx, n.refNode.ref, n.digest)
 		if err != nil {
 			log.G(ctx).WithError(err).Warnf("failed to get layer info for %q: %q", name, n.digest)
 			return nil, syscall.EIO
@@ -79,40 +86,40 @@ func (n *layerNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut)
 		}
 		n.fs.knownNodeMu.Unlock()
 
-		manifest, _, err := n.fs.refPool.loadRef(ctx, n.refNode.ref)
+		err := n.fs.layManager.ResolverMetaLayer(ctx, n.refNode.ref, n.digest)
 		if err != nil {
 			return nil, syscall.EIO
 		}
-		for _, layer := range manifest.Layers {
-			if layer.Digest == n.digest {
-				_, metaOK := layer.Annotations[label.NydusMetaLayer]
-				if metaOK {
-					if metaOK {
-						layer.Annotations[label.ImageRef] = n.refNode.ref.String()
-						layer.Annotations[label.CRIDigest] = n.digest.String()
 
-						err = n.fs.nydusFs.PrepareMetaLayer(ctx, storage.Snapshot{ID: n.digest.String()}, layer.Annotations)
-						if err != nil {
-							panic(err)
-							return nil, syscall.EIO
-						}
+		var cn *fusefs.Inode
+		var errno syscall.Errno
+		err = n.fs.layerMap.add(func(id uint32) (releasable, error) {
+			root := &node{}
+			copyAttr(&root.attr, &out.Attr)
+			cn = n.NewInode(ctx, root, fusefs.StableAttr{
+				Mode: out.Attr.Mode,
+				Ino:  out.Attr.Ino,
+			})
 
-						err = n.fs.nydusFs.Mount(ctx, n.digest.String(), layer.Annotations)
-						if err != nil {
-							panic(err)
-							return nil, syscall.EIO
-						}
-
-						return nil, syscall.EIO
-					}
-				}
+			rr := &layerReleasable{n: root}
+			n.fs.knownNodeMu.Lock()
+			if n.fs.knownNode == nil {
+				n.fs.knownNode = make(map[string]map[string]*layerReleasable)
 			}
+			if n.fs.knownNode[n.refNode.ref.String()] == nil {
+				n.fs.knownNode[n.refNode.ref.String()] = make(map[string]*layerReleasable)
+			}
+			n.fs.knownNode[n.refNode.ref.String()][n.digest.String()] = rr
+			n.fs.knownNodeMu.Unlock()
+			return rr, nil
+		})
+		if err != nil || errno != 0 {
+			if errno == 0 {
+				errno = syscall.EIO
+			}
+			return nil, errno
 		}
-		if err != nil {
-			panic(err)
-			return nil, syscall.EIO
-		}
-		return nil, syscall.ENOENT
+		return cn, 0
 	case layerUseFile:
 		log.G(ctx).Debugf("\"use\" file is referred but return ENOENT for reference management")
 		return nil, syscall.ENOENT

@@ -9,17 +9,7 @@ package fs
 import (
 	"context"
 	"fmt"
-	"github.com/containerd/containerd/reference"
-	"github.com/containerd/nydus-snapshotter/config"
-	fs2 "github.com/containerd/nydus-snapshotter/pkg/filesystem/fs"
-	"github.com/containerd/nydus-snapshotter/pkg/filesystem/nydus"
-	"github.com/containerd/nydus-snapshotter/pkg/process"
-	"github.com/containerd/nydus-snapshotter/pkg/services/keychain/dockerconfig"
-	"github.com/containerd/nydus-snapshotter/pkg/services/resolver"
-	"github.com/containerd/nydus-snapshotter/pkg/signature"
-	"github.com/containerd/nydus-snapshotter/pkg/store"
-	"github.com/opencontainers/go-digest"
-	"github.com/pkg/errors"
+	"github.com/containerd/nydus-snapshotter/pkg/additionlayerstore/manager"
 	"os/exec"
 	"sync"
 	"syscall"
@@ -72,9 +62,7 @@ type fs struct {
 
 	knownNode   map[string]map[string]*layerReleasable
 	knownNodeMu sync.Mutex
-
-	refPool *refPool
-	nydusFs fs2.FileSystem
+	layManager *manager.LayerManager
 }
 
 type layerReleasable struct {
@@ -104,60 +92,13 @@ func (r *inoReleasable) releasable() bool {
 	return r.n.EmbeddedInode().Forgotten()
 }
 
-func Mount(ctx context.Context, mountPoint string, rootDir string, debug bool, cfg *config.Config) error {
+func Mount(ctx context.Context, mountPoint string, rootDir string, debug bool, layManager *manager.LayerManager) error {
 	seconds := time.Second
-	refPool, err := newRefPool(ctx, rootDir, resolver.RegistryHostsFromConfig([]resolver.Credential{dockerconfig.NewDockerconfigKeychain(ctx)}...))
-	if err != nil {
-		return err
-	}
-
-	verifier, err := signature.NewVerifier(cfg.PublicKeyFile, cfg.ValidateSignature)
-	if err != nil {
-		return err
-	}
-
-	db, err := store.NewDatabase(rootDir)
-	if err != nil {
-		return errors.Wrap(err, "failed to new database")
-	}
-
-	pm, err := process.NewManager(process.Opt{
-		NydusdBinaryPath: cfg.NydusdBinaryPath,
-		Database:         db,
-		DaemonMode:       cfg.DaemonMode,
-		CacheDir:         cfg.CacheDir,
-	})
-	if err != nil {
-		return errors.Wrap(err, "failed to new process manager")
-	}
-
-	opts := []nydus.NewFSOpt{
-		nydus.WithProcessManager(pm),
-		nydus.WithNydusdBinaryPath(cfg.NydusdBinaryPath, cfg.DaemonMode),
-		nydus.WithMeta(rootDir),
-		nydus.WithDaemonConfig(cfg.DaemonCfg),
-		nydus.WithVPCRegistry(cfg.ConvertVpcRegistry),
-		nydus.WithVerifier(verifier),
-		nydus.WithDaemonMode(cfg.DaemonMode),
-		nydus.WithDaemonBackend(cfg.DaemonBackend),
-		nydus.WithLogLevel(cfg.LogLevel),
-		nydus.WithLogDir(cfg.LogDir),
-		nydus.WithLogToStdout(cfg.LogToStdout),
-		nydus.WithNydusdThreadNum(cfg.NydusdThreadNum),
-	}
-
-	nydusFs, err := nydus.NewFileSystem(ctx, opts...)
-	if err != nil {
-		return errors.Wrap(err, "failed to initialize nydus filesystem")
-	}
-
-
 	rawFS := fusefs.NewNodeFS(&rootNode{
 		fs: &fs{
 			nodeMap:  new(idMap),
 			layerMap: new(idMap),
-			refPool:  refPool,
-			nydusFs: nydusFs,
+			layManager: layManager,
 		},
 	}, &fusefs.Options{
 		AttrTimeout:     &seconds,
@@ -193,14 +134,6 @@ func (fs *fs) newInodeWithID(ctx context.Context, p func(uint32) fusefs.InodeEmb
 		return nil, syscall.EIO
 	}
 	return ino.EmbeddedInode(), 0
-}
-
-func (fs *fs) getLayerInfo(ctx context.Context, refspec reference.Spec, dgst digest.Digest) (Layer, error) {
-	manifest, config, err := fs.refPool.loadRef(ctx, refspec)
-	if err != nil {
-		return Layer{}, fmt.Errorf("failed to get manifest and config: %w", err)
-	}
-	return genLayerInfo(ctx, dgst, manifest, config)
 }
 
 // add reserves an unique uint32 object for the provided releasable object.

@@ -68,18 +68,26 @@ func (n *refNode) Rmdir(ctx context.Context, name string) syscall.Errno {
 		log.G(ctx).WithError(err).Warnf("invalid digest for %q during release", name)
 		return syscall.EINVAL
 	}
-	n.fs.knownNodeMu.Lock()
-	lh, ok := n.fs.knownNode[n.ref.String()][targetDigest.String()]
-	if !ok {
-		n.fs.knownNodeMu.Unlock()
-		log.G(ctx).WithError(err).Warnf("node of layer %v/%v is not registered", n.ref, targetDigest)
+	current, err := n.fs.layManager.Release(ctx, n.ref, targetDigest)
+	if err != nil {
+		log.G(ctx).WithError(err).Warnf("failed to release layer %v / %v", n.ref, targetDigest)
 		return syscall.EIO
 	}
-	lh.release()
-	delete(n.fs.knownNode[n.ref.String()], targetDigest.String())
-	if len(n.fs.knownNode[n.ref.String()]) == 0 {
-		delete(n.fs.knownNode, n.ref.String())
+	if current == 0 {
+		n.fs.knownNodeMu.Lock()
+		lh, ok := n.fs.knownNode[n.ref.String()][targetDigest.String()]
+		if !ok {
+			n.fs.knownNodeMu.Unlock()
+			log.G(ctx).WithError(err).Warnf("node of layer %v/%v is not registered", n.ref, targetDigest)
+			return syscall.EIO
+		}
+		lh.release()
+		delete(n.fs.knownNode[n.ref.String()], targetDigest.String())
+		if len(n.fs.knownNode[n.ref.String()]) == 0 {
+			delete(n.fs.knownNode, n.ref.String())
+		}
+		n.fs.knownNodeMu.Unlock()
 	}
-	n.fs.knownNodeMu.Unlock()
+	log.G(ctx).WithField("refcounter", current).Infof("layer %v/%v is marked as RELEASE", n.ref, targetDigest)
 	return syscall.ENOENT
 }
