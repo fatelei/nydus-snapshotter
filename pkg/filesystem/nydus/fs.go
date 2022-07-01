@@ -220,7 +220,7 @@ func (fs *NydusFilesystem) PrepareMetaLayer(ctx context.Context, s storage.Snaps
 
 	workdir := filepath.Join(fs.UpperPath(s.ID), BootstrapFile)
 	legacy := filepath.Join(fs.UpperPath(s.ID), LegacyBootstrapFile)
-	err = os.Mkdir(filepath.Dir(workdir), 0755)
+	err = os.MkdirAll(filepath.Dir(workdir), 0755)
 	if err != nil {
 		return errors.Wrap(err, "failed to create bootstrap dir")
 	}
@@ -597,7 +597,6 @@ func (fs *NydusFilesystem) createNewDaemonForStore(layerRef string, digest strin
 	}
 	return d, nil
 }
-
 
 // createSharedDaemon create an virtual daemon from global shared daemon instance
 // the global shared daemon with an special ID "shared_daemon", all virtual daemons are
