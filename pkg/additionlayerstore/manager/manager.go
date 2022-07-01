@@ -143,6 +143,7 @@ func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.
 	}
 
 	if _, ok := target.Annotations[label.NydusMetaLayer]; ok {
+		target.Annotations[label.ImageRef] = refspec.String()
 		err = r.nydusFs.PrepareMetaLayer(ctx, storage.Snapshot{ID: target.Digest.String()}, target.Annotations)
 		if err != nil {
 			log.G(ctx).Errorf("download snapshot files failed: %+v", err)
