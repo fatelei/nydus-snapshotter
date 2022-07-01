@@ -8,6 +8,7 @@ package daemon
 
 import (
 	"fmt"
+	"github.com/containerd/containerd/log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -263,6 +264,7 @@ func NewDaemon(opt ...NewDaemonOpt) (*Daemon, error) {
 
 func GetBootstrapFile(dir, id string) (string, error) {
 	// the meta file is stored to <snapshotid>/image/image.boot
+	log.L.Infof("dir is %s, id is %s", dir, id)
 	bootstrap := filepath.Join(dir, id, "fs", "image", "image.boot")
 	_, err := os.Stat(bootstrap)
 	if err == nil {
