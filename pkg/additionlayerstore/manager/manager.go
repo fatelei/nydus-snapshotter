@@ -145,6 +145,7 @@ func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.
 	if _, ok := target.Annotations[label.NydusMetaLayer]; ok {
 		err = r.nydusFs.PrepareMetaLayer(ctx, storage.Snapshot{ID: target.Digest.String()}, target.Annotations)
 		if err != nil {
+			log.G(ctx).Errorf("download snapshot files failed: %+v", err)
 			return err
 		}
 
@@ -152,6 +153,7 @@ func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.
 		if ok {
 			err = nydusFs.MountDiff(ctx, refspec.String(), digest.String(), target.Annotations)
 			if err != nil {
+				log.G(ctx).Errorf("mount diff file has error: %+v", err)
 				return err
 			}
 		}

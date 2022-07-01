@@ -5,10 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/containerd/nydus-snapshotter/pkg/additionlayerstore/layer"
 	"syscall"
 
 	"github.com/containerd/containerd/log"
+	"github.com/containerd/nydus-snapshotter/pkg/additionlayerstore/layer"
 	fusefs "github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"github.com/opencontainers/go-digest"
