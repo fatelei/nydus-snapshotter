@@ -8,6 +8,7 @@ package config
 
 import (
 	"encoding/json"
+	"github.com/containerd/containerd/log"
 	"io/ioutil"
 
 	"github.com/pkg/errors"
@@ -173,6 +174,7 @@ func NewDaemonConfig(daemonBackend string, cfg DaemonConfig, imageID string, vpc
 		}
 		backendConfig.Host = registryHost
 		backendConfig.Repo = image.Repo
+		log.L.Infof("backend config is %+v", backendConfig)
 	// Localfs and OSS backends don't need any update, just use the provided config in template
 	case backendTypeLocalfs:
 	case backendTypeOss:
