@@ -122,11 +122,11 @@ func (r *LayerManager) GetLayerInfo(ctx context.Context, refspec reference.Spec,
 	return genLayerInfo(ctx, dgst, manifest, config)
 }
 
-func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.Spec, digest digest.Digest) error {
+func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.Spec, digest digest.Digest) (*ocispec.Descriptor, error) {
 	// get manifest from cache.
 	manifest, _, err := r.refPool.loadRef(ctx, refspec)
 	if err != nil {
-		return fmt.Errorf("failed to get manifest and config: %w", err)
+		return nil, fmt.Errorf("failed to get manifest and config: %w", err)
 	}
 	var target ocispec.Descriptor
 	var found bool
@@ -139,7 +139,7 @@ func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.
 		}
 	}
 	if !found {
-		return fmt.Errorf("unknown digest %v for ref %q", target, refspec.String())
+		return nil, fmt.Errorf("unknown digest %v for ref %q", target, refspec.String())
 	}
 
 	if _, ok := target.Annotations[label.NydusMetaLayer]; ok {
@@ -148,7 +148,7 @@ func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.
 		err = r.nydusFs.PrepareMetaLayer(ctx, storage.Snapshot{ID: refspec.String()}, target.Annotations)
 		if err != nil {
 			log.G(ctx).Errorf("download snapshot files failed: %+v", err)
-			return err
+			return nil, err
 		}
 		log.G(ctx).Infof("ref is %s digest is %s", refspec.String(), target.Digest.String())
 		nydusFs, ok := r.nydusFs.(*nydus.NydusFilesystem)
@@ -156,11 +156,11 @@ func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.
 			err = nydusFs.MountDiff(ctx, refspec.String(), digest.String(), target.Annotations)
 			if err != nil {
 				log.G(ctx).Errorf("mount diff file has error: %+v", err)
-				return err
+				return nil, err
 			}
 		}
 	}
-	return nil
+	return &target, nil
 }
 
 func (r *LayerManager) Release(ctx context.Context, refspec reference.Spec, dgst digest.Digest) (int, error) {

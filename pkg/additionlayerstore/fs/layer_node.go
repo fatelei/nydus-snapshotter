@@ -5,10 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/containerd/nydus-snapshotter/pkg/additionlayerstore/layer"
 	"syscall"
 
 	"github.com/containerd/containerd/log"
-	"github.com/containerd/nydus-snapshotter/pkg/additionlayerstore/layer"
 	fusefs "github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"github.com/opencontainers/go-digest"
@@ -63,25 +63,39 @@ func (n *layerNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut)
 			sAttr.Ino = uint64(ino)
 			return n.NewInode(ctx, cn, sAttr)
 		})
-	case layerLink:
-		n.fs.knownNodeMu.Lock()
-		if lh, ok := n.fs.knownNode[n.refNode.ref.String()][n.digest.String()]; ok {
-			var ao fuse.AttrOut
-			if errno := lh.n.(fusefs.NodeGetattrer).Getattr(ctx, nil, &ao); errno != 0 {
-				return nil, errno
+	case layerLink, blobLink:
+		if name == layerLink {
+			n.fs.knownNodeMu.Lock()
+			if lh, ok := n.fs.knownNode[n.refNode.ref.String()][n.digest.String()]; ok {
+				var ao fuse.AttrOut
+				if errno := lh.n.(fusefs.NodeGetattrer).Getattr(ctx, nil, &ao); errno != 0 {
+					return nil, errno
+				}
+				copyAttr(&out.Attr, &ao.Attr)
+				n.fs.knownNodeMu.Unlock()
+				return n.NewInode(ctx, lh.n, fusefs.StableAttr{
+					Mode: out.Attr.Mode,
+					Ino:  out.Attr.Ino,
+				}), 0
 			}
-			copyAttr(&out.Attr, &ao.Attr)
 			n.fs.knownNodeMu.Unlock()
-			return n.NewInode(ctx, lh.n, fusefs.StableAttr{
-				Mode: out.Attr.Mode,
-				Ino:  out.Attr.Ino,
-			}), 0
 		}
-		n.fs.knownNodeMu.Unlock()
 
-		err := n.fs.layManager.ResolverMetaLayer(ctx, n.refNode.ref, n.digest)
+		l, err := n.fs.layManager.ResolverMetaLayer(ctx, n.refNode.ref, n.digest)
 		if err != nil {
 			return nil, syscall.EIO
+		}
+
+		if name == blobLink {
+			sAttr := layerToAttr(l, &out.Attr)
+			cn := &blobNode{l: l}
+			copyAttr(&cn.attr, &out.Attr)
+			return n.fs.newInodeWithID(ctx, func(ino uint32) fusefs.InodeEmbedder {
+				out.Attr.Ino = uint64(ino)
+				cn.attr.Ino = uint64(ino)
+				sAttr.Ino = uint64(ino)
+				return n.NewInode(ctx, cn, sAttr)
+			})
 		}
 
 		var cn *fusefs.Inode

@@ -2,6 +2,7 @@ package fs
 
 import (
 	"context"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"syscall"
 
 	fusefs "github.com/hanwen/go-fuse/v2/fs"
@@ -12,6 +13,7 @@ import (
 type blobNode struct {
 	fusefs.Inode
 	attr fuse.Attr
+	l    *ocispec.Descriptor
 }
 
 var _ = (fusefs.InodeEmbedder)((*blobNode)(nil))
