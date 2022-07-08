@@ -583,7 +583,7 @@ func (fs *NydusFilesystem) createNewDaemonForStore(layerRef string, digest strin
 		daemon.WithConfigDir(fs.ConfigRoot()),
 		daemon.WithSnapshotDir(fs.SnapshotRoot()),
 		daemon.WithLogDir(fs.logDir),
-		daemon.WithImageID(digest),
+		daemon.WithImageID(layerRef),
 		daemon.WithLogLevel(fs.logLevel),
 		daemon.WithLogToStdout(fs.logToStdout),
 		daemon.WithCustomMountPoint(customMountPoint),
