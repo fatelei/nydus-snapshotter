@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
-	"github.com/containerd/nydus-snapshotter/pkg/additionlayerstore/layer"
 	"syscall"
 
 	"github.com/containerd/containerd/log"
@@ -24,6 +22,13 @@ type layerNode struct {
 	digest  digest.Digest
 }
 
+type diffNode struct {
+	fusefs.Inode
+	attr fuse.Attr
+	fs   *fs
+}
+
+var _ = (fusefs.InodeEmbedder)((*diffNode)(nil))
 var _ = (fusefs.InodeEmbedder)((*layerNode)(nil))
 var _ = (fusefs.NodeCreater)((*layerNode)(nil))
 var _ = (fusefs.NodeLookuper)((*layerNode)(nil))
@@ -98,45 +103,16 @@ func (n *layerNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut)
 			})
 		}
 
-		var cn *fusefs.Inode
-		var errno syscall.Errno
-		err = n.fs.layerMap.add(func(id uint32) (releasable, error) {
-			root, err := layer.NewNode(n.digest, id, layer.OverlayOpaqueAll)
-			if err != nil {
-				return nil, err
-			}
-
-			var ao fuse.AttrOut
-			errno = root.(fusefs.NodeGetattrer).Getattr(ctx, nil, &ao)
-			if errno != 0 {
-				return nil, fmt.Errorf("failed to get root node: %v", errno)
-			}
-
-			copyAttr(&out.Attr, &ao.Attr)
-			cn = n.NewInode(ctx, root, fusefs.StableAttr{
-				Mode: out.Attr.Mode,
-				Ino:  out.Attr.Ino,
-			})
-
-			rr := &layerReleasable{n: root}
-			n.fs.knownNodeMu.Lock()
-			if n.fs.knownNode == nil {
-				n.fs.knownNode = make(map[string]map[string]*layerReleasable)
-			}
-			if n.fs.knownNode[n.refNode.ref.String()] == nil {
-				n.fs.knownNode[n.refNode.ref.String()] = make(map[string]*layerReleasable)
-			}
-			n.fs.knownNode[n.refNode.ref.String()][n.digest.String()] = rr
-			n.fs.knownNodeMu.Unlock()
-			return rr, nil
-		})
-		if err != nil || errno != 0 {
-			if errno == 0 {
-				errno = syscall.EIO
-			}
-			return nil, errno
+		child := &diffNode{
+			fs: n.fs,
 		}
-		return cn, 0
+		sAttr := defaultDirAttr(&out.Attr)
+		return n.fs.newInodeWithID(ctx, func(ino uint32) fusefs.InodeEmbedder {
+			out.Attr.Ino = uint64(ino)
+			child.attr.Ino = uint64(ino)
+			sAttr.Ino = uint64(ino)
+			return n.NewInode(ctx, child, sAttr)
+		})
 	case layerUseFile:
 		log.G(ctx).Debugf("\"use\" file is referred but return ENOENT for reference management")
 		return nil, syscall.ENOENT
