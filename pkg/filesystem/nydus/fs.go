@@ -13,6 +13,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/containerd/containerd/reference"
 	"io"
 	"os"
 	"path/filepath"
@@ -308,7 +309,7 @@ func (fs *NydusFilesystem) Mount(ctx context.Context, snapshotID string, labels 
 
 // Mount will be called when containerd snapshotter prepare remote snapshotter
 // this method will fork nydus daemon and manage it in the internal store, and indexed by snapshotID
-func (fs *NydusFilesystem) MountDiff(ctx context.Context, layerRef string, digest string, labels map[string]string) (err error) {
+func (fs *NydusFilesystem) MountDiff(ctx context.Context, layerRef reference.Spec, digest string, labels map[string]string) (err error) {
 	// If NoneDaemon mode, we don't mount nydus on host
 	if fs.mode == fspkg.NoneInstance {
 		return nil
@@ -520,7 +521,7 @@ func (fs *NydusFilesystem) newDaemon(ctx context.Context, snapshotID string, ima
 	return fs.createNewDaemon(snapshotID, imageID)
 }
 
-func (fs *NydusFilesystem) newDaemonForStore(ctx context.Context, layerRef string, digest string) (_ *daemon.Daemon, retErr error) {
+func (fs *NydusFilesystem) newDaemonForStore(ctx context.Context, layerRef reference.Spec, digest string) (_ *daemon.Daemon, retErr error) {
 	return fs.createNewDaemonForStore(layerRef, digest)
 }
 
@@ -567,23 +568,23 @@ func (fs *NydusFilesystem) createNewDaemon(snapshotID string, imageID string) (*
 }
 
 // createNewDaemon create new nydus daemon by snapshotID and imageID
-func (fs *NydusFilesystem) createNewDaemonForStore(layerRef string, digest string) (*daemon.Daemon, error) {
+func (fs *NydusFilesystem) createNewDaemonForStore(layerRef reference.Spec, digest string) (*daemon.Daemon, error) {
 	var (
 		d   *daemon.Daemon
 		err error
 	)
-	d, _ = fs.manager.GetBySnapshotID(layerRef)
+	d, _ = fs.manager.GetBySnapshotID(layerRef.String())
 	if d != nil {
 		return nil, errdefs.ErrAlreadyExists
 	}
-	customMountPoint := filepath.Join(fs.RootDir, layerRef, digest, "diff")
+	customMountPoint := filepath.Join(fs.RootDir, "store", layerRef.Object, digest, "diff")
 	if d, err = daemon.NewDaemon(
-		daemon.WithSnapshotID(layerRef),
+		daemon.WithSnapshotID(layerRef.String()),
 		daemon.WithSocketDir(fs.SocketRoot()),
 		daemon.WithConfigDir(fs.ConfigRoot()),
 		daemon.WithSnapshotDir(fs.SnapshotRoot()),
 		daemon.WithLogDir(fs.logDir),
-		daemon.WithImageID(layerRef),
+		daemon.WithImageID(layerRef.String()),
 		daemon.WithLogLevel(fs.logLevel),
 		daemon.WithLogToStdout(fs.logToStdout),
 		daemon.WithCustomMountPoint(customMountPoint),
