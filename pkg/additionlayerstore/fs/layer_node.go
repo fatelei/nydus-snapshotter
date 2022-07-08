@@ -102,7 +102,7 @@ func (n *layerNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut)
 				return n.NewInode(ctx, cn, sAttr)
 			})
 		}
-		return nil, syscall.EEXIST
+		return nil, syscall.EIO
 	case layerUseFile:
 		log.G(ctx).Debugf("\"use\" file is referred but return ENOENT for reference management")
 		return nil, syscall.ENOENT
