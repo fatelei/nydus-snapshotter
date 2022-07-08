@@ -28,6 +28,12 @@ type diffNode struct {
 	fs   *fs
 }
 
+func (n *diffNode) Getattr(ctx context.Context, f fusefs.FileHandle, out *fuse.AttrOut) syscall.Errno {
+	copyAttr(&out.Attr, &n.attr)
+	return 0
+}
+
+var _ = (fusefs.NodeGetattrer)((*diffNode)(nil))
 var _ = (fusefs.InodeEmbedder)((*diffNode)(nil))
 var _ = (fusefs.InodeEmbedder)((*layerNode)(nil))
 var _ = (fusefs.NodeCreater)((*layerNode)(nil))
@@ -102,7 +108,29 @@ func (n *layerNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut)
 				return n.NewInode(ctx, cn, sAttr)
 			})
 		}
-		return nil, syscall.EIO
+
+		child := &diffNode{
+			fs: n.fs,
+		}
+		sAttr := defaultDirAttr(&out.Attr)
+		return n.fs.newInodeWithID(ctx, func(ino uint32) fusefs.InodeEmbedder {
+			out.Attr.Ino = uint64(ino)
+			child.attr.Ino = uint64(ino)
+			sAttr.Ino = uint64(ino)
+			cn := n.NewInode(ctx, child, sAttr)
+
+			rr := &layerReleasable{n: child}
+			n.fs.knownNodeMu.Lock()
+			if n.fs.knownNode == nil {
+				n.fs.knownNode = make(map[string]map[string]*layerReleasable)
+			}
+			if n.fs.knownNode[n.refNode.ref.String()] == nil {
+				n.fs.knownNode[n.refNode.ref.String()] = make(map[string]*layerReleasable)
+			}
+			n.fs.knownNode[n.refNode.ref.String()][n.digest.String()] = rr
+			n.fs.knownNodeMu.Unlock()
+			return cn
+		})
 	case layerUseFile:
 		log.G(ctx).Debugf("\"use\" file is referred but return ENOENT for reference management")
 		return nil, syscall.ENOENT
