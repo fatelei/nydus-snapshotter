@@ -102,17 +102,7 @@ func (n *layerNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut)
 				return n.NewInode(ctx, cn, sAttr)
 			})
 		}
-
-		child := &diffNode{
-			fs: n.fs,
-		}
-		sAttr := defaultDirAttr(&out.Attr)
-		return n.fs.newInodeWithID(ctx, func(ino uint32) fusefs.InodeEmbedder {
-			out.Attr.Ino = uint64(ino)
-			child.attr.Ino = uint64(ino)
-			sAttr.Ino = uint64(ino)
-			return n.NewInode(ctx, child, sAttr)
-		})
+		return nil, syscall.EEXIST
 	case layerUseFile:
 		log.G(ctx).Debugf("\"use\" file is referred but return ENOENT for reference management")
 		return nil, syscall.ENOENT

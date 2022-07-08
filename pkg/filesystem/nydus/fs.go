@@ -577,7 +577,7 @@ func (fs *NydusFilesystem) createNewDaemonForStore(layerRef reference.Spec, dige
 	if d != nil {
 		return nil, errdefs.ErrAlreadyExists
 	}
-	customMountPoint := filepath.Join(fs.RootDir, "store", layerRef.Object, digest, "diff", "diff1")
+	customMountPoint := filepath.Join(fs.RootDir, "store", layerRef.Object, digest, "diff")
 	if d, err = daemon.NewDaemon(
 		daemon.WithSnapshotID(layerRef.String()),
 		daemon.WithSocketDir(fs.SocketRoot()),
