@@ -153,11 +153,12 @@ func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.
 		log.G(ctx).Infof("ref is %s digest is %s", refspec.String(), target.Digest.String())
 		nydusFs, ok := r.nydusFs.(*nydus.NydusFilesystem)
 		if ok {
-			err = nydusFs.MountDiff(ctx, refspec, digest.String(), target.Annotations)
-			if err != nil {
-				log.G(ctx).Errorf("mount diff file has error: %+v", err)
-				return nil, err
-			}
+			go func() {
+				err := nydusFs.MountDiff(ctx, refspec, digest.String(), target.Annotations)
+				if err != nil {
+					log.G(ctx).Errorf("mount diff file has error: %+v", err)
+				}
+			}()
 		}
 	}
 	return &target, nil
