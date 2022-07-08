@@ -10,6 +10,7 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -577,7 +578,8 @@ func (fs *NydusFilesystem) createNewDaemonForStore(layerRef reference.Spec, dige
 	if d != nil {
 		return nil, errdefs.ErrAlreadyExists
 	}
-	customMountPoint := filepath.Join(fs.RootDir, "store", layerRef.Object, digest, "diff")
+	ref := base64.StdEncoding.EncodeToString([]byte(layerRef.String()))
+	customMountPoint := filepath.Join(fs.RootDir, "store", ref, digest, "diff")
 	if d, err = daemon.NewDaemon(
 		daemon.WithSnapshotID(layerRef.String()),
 		daemon.WithSocketDir(fs.SocketRoot()),
