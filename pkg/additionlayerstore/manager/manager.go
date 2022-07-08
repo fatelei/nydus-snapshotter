@@ -150,7 +150,7 @@ func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.
 			log.G(ctx).Errorf("download snapshot files failed: %+v", err)
 			return err
 		}
-
+		log.G(ctx).Infof("ref is %s digest is %s", refspec.String(), target.Digest.String())
 		nydusFs, ok := r.nydusFs.(*nydus.NydusFilesystem)
 		if ok {
 			err = nydusFs.MountDiff(ctx, refspec.String(), digest.String(), target.Annotations)

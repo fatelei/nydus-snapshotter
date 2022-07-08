@@ -45,17 +45,17 @@ func (n *refNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (
 		return nil, syscall.EINVAL
 	}
 	sAttr := defaultDirAttr(&out.Attr)
-	cn := &layerNode{
+	child := &layerNode{
 		fs:      n.fs,
 		digest:  targetDigest,
 		refNode: n,
 	}
-	copyAttr(&cn.attr, &out.Attr)
+	copyAttr(&child.attr, &out.Attr)
 	return n.fs.newInodeWithID(ctx, func(ino uint32) fusefs.InodeEmbedder {
 		out.Attr.Ino = uint64(ino)
-		cn.attr.Ino = uint64(ino)
+		child.attr.Ino = uint64(ino)
 		sAttr.Ino = uint64(ino)
-		return n.NewInode(ctx, cn, sAttr)
+		return n.NewInode(ctx, child, sAttr)
 	})
 }
 
