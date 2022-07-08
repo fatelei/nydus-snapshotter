@@ -8,6 +8,7 @@ package registry
 
 import (
 	"fmt"
+	"github.com/containerd/containerd/log"
 	"net/http"
 	"reflect"
 	"strings"
@@ -40,6 +41,7 @@ func ParseImage(imageID string) (Image, error) {
 	if err != nil {
 		return Image{}, err
 	}
+	log.L.Infof("parse image id %s, get named is %+v", imageID, named)
 	host := docker.Domain(named)
 	repo := docker.Path(named)
 	return Image{
