@@ -494,7 +494,7 @@ func (fs *Filesystem) PrepareMetaLayer(ctx context.Context, s storage.Snapshot, 
 
 	workdir := filepath.Join(fs.UpperPath(s.ID), BootstrapFile)
 	legacy := filepath.Join(fs.UpperPath(s.ID), LegacyBootstrapFile)
-	err = os.Mkdir(filepath.Dir(workdir), 0755)
+	err = os.MkdirAll(filepath.Dir(workdir), 0755)
 	if err != nil {
 		return errors.Wrap(err, "failed to create bootstrap dir")
 	}
